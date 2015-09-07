@@ -85,8 +85,7 @@ def loadTrain():
     titanic.loc[titanic["Embarked"] == "Q", "Embarked"] = 2
 
 def tryRegression():
-    # If we want to run this, be sure to uncomment some of the transformations in loadTrain
-    
+ 
     # The columns we'll use to predict the target
     predictors = ["Pclass", "Sex", "Age", "SibSp", "Parch", "Fare", "Embarked"]
     
@@ -164,7 +163,7 @@ def tryEnsembling():
     # min_samples_leaf is the minimum number of samples we can have at the place where a tree branch ends (the bottom points of the tree)
     alg = RandomForestClassifier(random_state=1, n_estimators=10, min_samples_split=2, min_samples_leaf=1)
     scores = cross_validation.cross_val_score(alg, titanic[predictors], titanic["Survived"], cv=3)
-    scores.mean()
+    print "random forest score", scores.mean()
     
     # Generating a familysize column
     titanic["FamilySize"] = titanic["SibSp"] + titanic["Parch"]
@@ -183,7 +182,7 @@ def tryEnsembling():
         titles[titles == k] = v
     
     # Verify that we converted everything.
-    print pandas.value_counts(titles)
+    #print pandas.value_counts(titles)
     
     # Add in the title column.
     titanic["Title"] = titles 
@@ -193,13 +192,12 @@ def tryEnsembling():
     
     # Get the family ids with the apply method
     family_ids = titanic.apply(get_family_id, axis=1)
-    
-    # Try number of women in family, number of children?
-    
+      
     
     # Print the count of each unique id.
     #print pandas.value_counts(family_ids)
     
+    # Try number of women in family, number of children?
     titanic["FamilyId"] = family_ids
     titanic["numbWomen"] = 0
     titanic["numbChildren"] = 0
@@ -236,16 +234,16 @@ def tryEnsembling():
     predictors = ["Pclass", "Sex", "numbWomen", "Title"]
   
     alg = RandomForestClassifier(random_state=1, n_estimators=150, min_samples_split=8, min_samples_leaf=4)
-    
+    print 'alg set'
     scores = cross_validation.cross_val_score(alg, titanic[predictors], titanic["Survived"], cv=3)
-    scores.mean()
-    
+    print "Random forest score with numbWomen replacing Fare", scores.mean()
     
     # The algorithms we want to ensemble.
     # We're using the more linear predictors for the logistic regression, and everything with the gradient boosting classifier.
     algorithms = [
-        [GradientBoostingClassifier(random_state=1, n_estimators=25, max_depth=3), ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize", "Title", "FamilyId", "numbWomen"]],
-        [LogisticRegression(random_state=1), ["Pclass", "Sex", "Fare", "FamilySize", "Title", "Age", "Embarked","numbWomen"]]
+        #[GradientBoostingClassifier(random_state=1, n_estimators=25, max_depth=3), ["Pclass", "Sex", "Age", "numbWomen", "Fare", "Embarked", "FamilySize", "Title", "FamilyId"]],
+        [GradientBoostingClassifier(random_state=1, n_estimators=25, max_depth=3), ["Pclass", "Sex", "Age", "numbWomen", "Fare", "Embarked", "Title", "FamilyId"]],
+        [LogisticRegression(random_state=1), ["Pclass", "Sex", "Fare","numbWomen", "FamilySize", "Title", "Age", "Embarked"]]
     ]
     
     # Initialize the cross validation folds
@@ -285,7 +283,7 @@ def tryEnsembling():
         titles[titles == k] = v
     titanic_test["Title"] = titles
     # Check the counts of each unique title.
-    print pandas.value_counts(titanic_test["Title"])
+    #print pandas.value_counts(titanic_test["Title"])
     
     # Now, we add the family size column.
     titanic_test["FamilySize"] = titanic_test["SibSp"] + titanic_test["Parch"]
@@ -309,11 +307,13 @@ def tryEnsembling():
     titanic_test["FamilyId"] = family_ids
     titanic_test["NameLength"] = titanic_test["Name"].apply(lambda x: len(x))
     
-    predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize", "Title", "FamilyId", "numbWomen"]
+    #predictors = ["Pclass", "Sex", "Age", "numbWomen", "Fare", "Embarked", "FamilySize", "Title", "FamilyId"]
+    predictors = ["Pclass", "Sex", "Age", "numbWomen", "Fare", "Embarked",  "Title", "FamilyId"]
     
     algorithms = [
         [GradientBoostingClassifier(random_state=1, n_estimators=25, max_depth=3), predictors],
-        [LogisticRegression(random_state=1), ["Pclass", "Sex", "Fare", "FamilySize", "Title", "Age", "Embarked","numbWomen"]]
+        #[LogisticRegression(random_state=1), ["Pclass", "Sex", "Fare", "FamilySize", "Title", "Age", "numbWomen", "Embarked"]]
+        [LogisticRegression(random_state=1), ["Pclass", "Sex", "Fare", "numbWomen", "Title", "Age", "numbWomen", "Embarked"]]
     ]
     
     full_predictions = []
