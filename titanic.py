@@ -8,9 +8,11 @@ from sklearn.linear_model import LinearRegression, LogisticRegression
 # Sklearn also has a helper that makes it easy to do cross validation
 from sklearn.cross_validation import KFold
 import numpy as np
+import matplotlib.pyplot as plt
 import operator
 import pandas
 import re
+from numpy import unique
 
 # A function to get the title from a name.
 def get_title(name):
@@ -40,6 +42,20 @@ def get_family_id(row):
         family_id_mapping[family_id] = current_id
     return family_id_mapping[family_id]
 
+# First let's make a function to sort through the sex 
+def male_female_child(passenger):
+    # 0 = Male
+    # 1 = Female
+    # -1 = Child
+    
+    # Take the Age and Sex
+    age,sex = passenger
+    # Compare the age, otherwise leave the sex
+    if age < 16:
+        return -1
+    else:
+        return sex
+    
 titanic = pandas.read_csv("titanic/train.csv")
 titanic_test = pandas.read_csv("titanic/test.csv")
 
@@ -69,6 +85,7 @@ def loadTrain():
     titanic.loc[titanic["Embarked"] == "Q", "Embarked"] = 2
 
 def tryRegression():
+    # If we want to run this, be sure to uncomment some of the transformations in loadTrain
     
     # The columns we'll use to predict the target
     predictors = ["Pclass", "Sex", "Age", "SibSp", "Parch", "Fare", "Embarked"]
@@ -171,20 +188,34 @@ def tryEnsembling():
     # Add in the title column.
     titanic["Title"] = titles 
 
+    # We'll define a new column called 'person', remember to specify axis=1 for columns and not index
+    titanic['person'] = titanic[['Age','Sex']].apply(male_female_child,axis=1)
     
     # Get the family ids with the apply method
     family_ids = titanic.apply(get_family_id, axis=1)
     
-    # There are a lot of family ids, so we'll compress all of the families under 3 members into one code.
-    family_ids[titanic["FamilySize"] < 3] = -1
+    # Try number of women in family, number of children?
+    
     
     # Print the count of each unique id.
-    print pandas.value_counts(family_ids)
+    #print pandas.value_counts(family_ids)
     
     titanic["FamilyId"] = family_ids
-    
-    
-    predictors = ["Pclass", "Sex", "Age", "SibSp", "Parch", "Fare", "Embarked", "FamilySize", "Title", "FamilyId"]
+    titanic["numbWomen"] = 0
+    titanic["numbChildren"] = 0
+
+    for f in unique(family_ids):
+        w = len(titanic[((titanic.FamilyId == f) & (titanic.person == 1))].index)
+        titanic.loc[titanic["FamilyId"] == f,"numbWomen"] = w
+        titanic.loc[titanic["FamilyId"] == f,"numbChildren"] = len(titanic[((titanic.FamilyId == f) & (titanic.person == -1))].index)
+
+    # There are a lot of family ids, so we'll compress all of the families under 3 members into one code.
+    # Note that we do not do this until after we have calculated the number of woman and children in the family
+    family_ids[titanic["FamilySize"] < 3] = -1
+    titanic["FamilyId"] = family_ids
+
+
+    predictors = ["Pclass", "Sex", "Age", "SibSp", "Parch", "Fare", "Embarked", "FamilySize", "Title", "FamilyId", "numbWomen", "numbChildren"]
     
     # Perform feature selection
     selector = SelectKBest(f_classif, k=5)
@@ -194,13 +225,16 @@ def tryEnsembling():
     scores = -np.log10(selector.pvalues_)
     
     # Plot the scores.  See how "Pclass", "Sex", "Title", and "Fare" are the best?
-    #plt.bar(range(len(predictors)), scores)
-    #plt.xticks(range(len(predictors)), predictors, rotation='vertical')
-    #plt.show()
+    plt.bar(range(len(predictors)), scores)
+    plt.xticks(range(len(predictors)), predictors, rotation='vertical')
+    plt.show()
+
     
     # Pick only the four best features.
     predictors = ["Pclass", "Sex", "Fare", "Title"]
-    
+    # Number of women in family seems a better predictor than fare
+    predictors = ["Pclass", "Sex", "numbWomen", "Title"]
+  
     alg = RandomForestClassifier(random_state=1, n_estimators=150, min_samples_split=8, min_samples_leaf=4)
     
     scores = cross_validation.cross_val_score(alg, titanic[predictors], titanic["Survived"], cv=3)
@@ -210,8 +244,8 @@ def tryEnsembling():
     # The algorithms we want to ensemble.
     # We're using the more linear predictors for the logistic regression, and everything with the gradient boosting classifier.
     algorithms = [
-        [GradientBoostingClassifier(random_state=1, n_estimators=25, max_depth=3), ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize", "Title", "FamilyId"]],
-        [LogisticRegression(random_state=1), ["Pclass", "Sex", "Fare", "FamilySize", "Title", "Age", "Embarked"]]
+        [GradientBoostingClassifier(random_state=1, n_estimators=25, max_depth=3), ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize", "Title", "FamilyId", "numbWomen"]],
+        [LogisticRegression(random_state=1), ["Pclass", "Sex", "Fare", "FamilySize", "Title", "Age", "Embarked","numbWomen"]]
     ]
     
     # Initialize the cross validation folds
@@ -258,18 +292,28 @@ def tryEnsembling():
     
     # Now we can add family ids.
     # We'll use the same ids that we did earlier.
-    print family_id_mapping
+    #print family_id_mapping
     
+    titanic_test['person'] = titanic_test[['Age','Sex']].apply(male_female_child,axis=1)
     family_ids = titanic_test.apply(get_family_id, axis=1)
+    titanic_test["FamilyId"] = family_ids
+    titanic_test["numbWomen"] = 0
+    titanic_test["numbChildren"] = 0
+
+    for f in unique(family_ids):
+        w = len(titanic_test[((titanic_test.FamilyId == f) & (titanic_test.person == 1))].index)
+        titanic_test.loc[titanic_test["FamilyId"] == f,"numbWomen"] = w
+        titanic_test.loc[titanic_test["FamilyId"] == f,"numbChildren"] = len(titanic_test[((titanic_test.FamilyId == f) & (titanic_test.person == -1))].index)
+
     family_ids[titanic_test["FamilySize"] < 3] = -1
     titanic_test["FamilyId"] = family_ids
     titanic_test["NameLength"] = titanic_test["Name"].apply(lambda x: len(x))
     
-    predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize", "Title", "FamilyId"]
+    predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize", "Title", "FamilyId", "numbWomen"]
     
     algorithms = [
         [GradientBoostingClassifier(random_state=1, n_estimators=25, max_depth=3), predictors],
-        [LogisticRegression(random_state=1), ["Pclass", "Sex", "Fare", "FamilySize", "Title", "Age", "Embarked"]]
+        [LogisticRegression(random_state=1), ["Pclass", "Sex", "Fare", "FamilySize", "Title", "Age", "Embarked","numbWomen"]]
     ]
     
     full_predictions = []
